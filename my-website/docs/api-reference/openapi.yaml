@@ -1,0 +1,546 @@
+---
+openapi: 3.0.3
+info:
+  title: University Scheduler API
+  version: 1.0.0
+  description: Спецификация системы автоматизированного составления расписания
+
+servers:
+  - url: https://api.unischedule.edu
+    description: Основной сервер разработки
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Составление расписания
+    description: Экраны загрузки данных, настройки параметров и запуска генерации
+  - name: Просмотр и корректировка
+    description: Работа сотрудника учебного отдела с черновиком расписания и инструменты замены
+  - name: Поиск и бронирование
+    description: Функционал поиска свободных аудиторий
+  - name: Просмотр расписания
+    description: Экран просмотра готового расписания авторизованными пользователями
+
+paths:
+  /api/v1/plans/upload:
+    post:
+      tags: ["Составление расписания"]
+      summary: Загрузить учебные планы
+      description: Принимает файлы учебных планов (.csv/.xlsx) 
+      requestBody:
+        description: Файлы для импорта
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '201':
+          description: Файлы успешно загружены
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Файл слишком большой
+        '415':
+          description: Неподдерживаемый формат файла
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/plans/subjects:
+    get:
+      tags: ["Составление расписания"]
+      summary: Получить список предметов
+      description: Возвращает список всех распознанных в файле дисциплин для настройки
+      responses:
+        '200':
+          description: Список предметов получен
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubjectShort'
+        '404':
+          description: Список предметов не найден
+
+  /api/v1/schedule/generation:
+    post:
+      tags: ["Составление расписания"]
+      summary: Сформировать расписание
+      description: Запуск алгоритма генерации на основе плана и выбранных фильтров
+      requestBody:
+        description: Настройки генерации
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationSettings'
+      responses:
+        '202':
+          description: Генерация запущена, возвращён идентификатор задачи
+          headers:
+            Location:
+              description: URL для проверки статуса задачи
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Сервис недоступен
+
+  /api/v1/schedule/generation/{taskId}:
+    get:
+      tags: ["Составление расписания"]
+      summary: Получить статус генерации
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Статус задачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatus'
+        '404':
+          description: Задача не найдена
+
+  /api/v1/subjects/{id}/requirements:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Уникальный ID дисциплины
+        schema:
+          type: string
+    get:
+      tags: ["Составление расписания"]
+      summary: Получить требования дисциплины
+      description: Чтение текущих фильтров для конкретного предмета
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectRequirements'
+    patch:
+      tags: ["Составление расписания"]
+      summary: Сохранить требования
+      description: Частичное обновление настроек дисциплины
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectRequirements'
+      responses:
+        '200':
+          description: Настройки сохранены
+
+  /api/v1/schedule/draft:
+    get:
+      tags: ["Просмотр и корректировка"]
+      summary: Получить черновик
+      description: Получение полной сетки расписания для редактирования сотрудником отдела
+      parameters:
+        - name: startDate
+          in: query
+          description: Начало периода (включительно)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-09-01"
+        - name: endDate
+          in: query
+          description: Конец периода (включительно)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-09-07"
+      responses:
+        '200':
+          description: Черновик получен успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LessonResponse'
+        '404':
+          description: Расписание не найдено
+
+    put:
+      tags: ["Просмотр и корректировка"]
+      summary: Полностью заменить черновик расписания (сохранить правки)
+      description: |
+        Заменяет текущий черновик новым набором занятий.
+        Обычно используется после ручной корректировки всей сетки.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/LessonResponse'
+      responses:
+        '200':
+          description: Черновик обновлён
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Нарушение бизнес-правил (накладки)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    patch:
+      tags: ["Просмотр и корректировка"]
+      summary: Частично обновить черновик (статус или замена преподавателя/аудитории)
+      description: |
+        Поддерживает два типа операций:
+        1. Изменение статуса черновика (например, публикация).
+        2. Замена преподавателя и/или аудитории для одного или нескольких занятий.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/DraftStatusUpdate'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/LessonUpdate'
+      responses:
+        '200':
+          description: Изменения применены
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Нарушение бизнес-правил (конфликт или недопустимый статус)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/replacements/search:
+    get:
+      tags: ["Просмотр и корректировка"]
+      summary: Найти варианты замены
+      parameters:
+        - name: lesson_id
+          in: query
+          required: true
+          description: ID занятия для поиска замен
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: true
+          description: Тип замены (преподаватель или комната)
+          schema:
+            type: string
+            enum: [TEACHER, ROOM]
+      responses:
+        '200':
+          description: Варианты найдены
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReplacementOption'
+
+  /api/v1/rooms/available:
+    get:
+      tags: ["Поиск и бронирование"]
+      summary: Свободные аудитории
+      description: Поиск аудиторий по параметрам корпуса и оснащенности
+      parameters:
+        - name: building
+          in: query
+          description: Название корпуса
+          schema:
+            type: string
+        - name: equipment
+          in: query
+          description: Необходимое оборудование
+          schema:
+            type: array
+            items:
+              type: string
+        - name: interval 
+          in: query
+          required: true
+          description: Временной интервал
+          schema:
+            type: string
+            format: date-time-interval
+            example: "2024-04-15T10:30:00/2024-04-15T12:00:00"
+      responses:
+        '200':
+          description: Список получен
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Room'
+
+  /api/v1/rooms/reserve:
+    post:
+      tags: ["Поиск и бронирование"]
+      summary: Забронировать аудиторию
+      description: Создание брони на определенный интервал времени
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+      responses:
+        '201':
+          description: Бронирование подтверждено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Конфликт — аудитория уже занята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/user/my-schedule:
+    get:
+      tags: ["Просмотр расписания"]
+      summary: Получить расписание текущего пользователя
+      parameters:
+        - name: startDate
+          in: query
+          description: Начало периода (включительно)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-09-01"
+        - name: endDate
+          in: query
+          description: Конец периода (включительно)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-09-07"
+        - name: weekOffset
+          in: query
+          description: Смещение недели относительно текущей (целое число, например -1, 0, +1)
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Расписание получено
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LessonResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Введите JWT токен в формате "Bearer {token}"
+
+  responses:
+    BadRequest:
+      description: Ошибка в параметрах запроса
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Требуется авторизация
+    Forbidden:
+      description: Недостаточно прав доступа
+    ServerError:
+      description: Внутренняя ошибка сервера
+    Conflict:
+      description: Конфликт состояния ресурсов
+      content:
+        application/json:
+          schema: 
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Объект с описанием ошибки
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Внутренний код ошибки
+        message:
+          type: string
+          description: Пояснение для пользователя
+
+    TaskResponse:
+      type: object
+      required: [taskId]
+      properties:
+        taskId:
+          type: string
+          
+    TaskStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED]
+        result:
+          type: array
+          items:
+            $ref: '#/components/schemas/LessonResponse'
+        error:
+          $ref: '#/components/schemas/ErrorResponse'
+
+    LessonUpdate:
+      type: object
+      required: [lesson_id]
+      description: Объект обновления пары (замена преподавателя/аудитории)
+      properties:
+        lesson_id: { type: string, description: "ID пары" }
+        new_teacher_id: { type: string, description: "ID преподавателя" }
+        new_room_id: { type: string, description: "ID аудитории" }
+
+    SubjectShort:
+      type: object
+      required: [id, name]
+      description: Краткая информация о дисциплине
+      properties:
+        id: { type: string, description: "ID предмета" }
+        name: { type: string, description: "Название" }
+        groups: { type: array, items: { type: string }, description: "Группы" }
+
+    SubjectRequirements:
+      type: object
+      description: Требования дисциплины
+      properties:
+        equipment:
+          type: array
+          description: Список оборудования
+          items: { type: string, enum: [PC, Projector, LabStand] }
+        capacity_needed: { type: integer, description: "Мест" }
+
+    GenerationSettings:
+      type: object
+      required: [plan_id]
+      description: Настройки генерации
+      properties:
+        plan_id: { type: string, description: "ID плана" }
+        individual_plans: { type: boolean, description: "Учет ИУП" }
+        excluded_dates:
+          type: array
+          description: Праздничные даты
+          items: { type: string, format: date }
+
+    LessonResponse:
+      type: object
+      required: [lesson_id, subject, type, teacher, room, time_slot]
+      description: Объект занятия в сетке
+      properties:
+        lesson_id: { type: string, description: "ID занятия" }
+        subject: { type: string, description: "Дисциплина" }
+        type: { type: string, enum: [LECTURE, SEMINAR, LAB], description: "Тип" }
+        teacher:
+          type: object
+          required: [id, name] 
+          description: Данные преподавателя
+          properties:
+            id: { type: string, description: "ID" }
+            name: { type: string, description: "ФИО" }
+        room:
+          type: object
+          required: [id, number]
+          description: Данные аудитории
+          properties:
+            id: { type: string, description: "ID" }
+            number: { type: string, description: "Номер" }
+        time_slot:
+          type: object
+          required: [day, order]
+          description: Время
+          properties:
+            day: { type: string, enum: [MON, TUE, WED, THU, FRI], description: "День" }
+            order: { type: integer, description: "Пара №" }
+
+    ReplacementOption:
+      type: object
+      required: [id, name]
+      description: Вариант для замены
+      properties:
+        id: { type: string, description: "ID" }
+        name: { type: string, description: "ФИО/Номер" }
+        description: { type: string, description: "Пояснение" }
+
+    DraftStatusUpdate:
+      type: object
+      required: [status]
+      description: Изменение статуса черновика
+      properties:
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED]
+          description: |
+            DRAFT — черновик (можно редактировать)
+            PUBLISHED — опубликованное расписание (доступно всем)
+
+    Room:
+      type: object
+      required: [room_id, number, building] 
+      description: Сущность аудитории
+      properties:
+        room_id: { type: string, description: "ID" }
+        number: { type: string, description: "Номер" }
+        building: { type: string, description: "Корпус" }
+
+    BookingRequest:
+      type: object
+      required: [room_id, interval, user_id]
+      description: Данные брони
+      properties:
+        room_id: { type: string, description: "ID аудитории" }
+        interval:
+          type: string
+          format: date-time-interval
+          description: Интервал времени в формате ISO8601 (например, "2024-04-15T10:30:00/2024-04-15T12:00:00")
+        user_id: { type: string, description: "ID пользователя" }
+    

@@ -1,0 +1,5 @@
+label: Бизнес-анализ
+position: 2
+link:
+  type: generated-index
+  description: Анализ предметной области, включая сессии Event Storming, модели бизнес-процессов (BPMN) и Use Case диаграммы.
