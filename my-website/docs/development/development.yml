@@ -1,37 +1,5 @@
-name: Deploy Dev to GitHub Pages
-
-on:
-  push:
-    branches: [develop]         
-  workflow_dispatch:           
-
-permissions:
-  contents: write
-
-jobs:
-  deploy-dev:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: my-website/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: my-website
-
-      - name: Build (development)
-        run: npm run build
-        working-directory: my-website
-
-      - name: Deploy Dev to gh-pages-dev
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: my-website/build
-          publish_branch: gh-pages-dev  
-          destination_dir: ./          
+label: Разработка и CI/CD
+position: 6
+link:
+  type: generated-index
+  description: Технические инструкции по локальному развертыванию проекта, правила работы с кодом (Contributing) и описание процессов автоматизации сборки и деплоя.
