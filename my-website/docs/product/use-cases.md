@@ -1,6 +1,6 @@
 ---
 title: Use Case диаграмма
-sidebar_position: 3
+sidebar_position: 5
 description: Диаграмма вариантов использования (UML Use Case) для MVP версии системы
 ---
 

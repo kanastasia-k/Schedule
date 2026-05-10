@@ -1,6 +1,6 @@
 ---
 title: Sequence-диаграмма
-sidebar_position: 1
+sidebar_position: 4
 description: Диаграмма последовательности процесса поиска замены (аудитории или преподавателя)
 ---
 

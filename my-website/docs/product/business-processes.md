@@ -1,6 +1,6 @@
 ---
 title: Модель бизнес-процессов (BPMN)
-sidebar_position: 2
+sidebar_position: 6
 description: BPMN-диаграмма процесса автоматизированного составления расписания
 ---
 

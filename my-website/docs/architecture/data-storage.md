@@ -1,6 +1,6 @@
 ---
 title: Хранение данных
-sidebar_position: 2
+sidebar_position: 3
 description: Определение сущностей системы и обоснование выбора технологий хранения (PostgreSQL, Redis, ClickHouse)
 ---
 
